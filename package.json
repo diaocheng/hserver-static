@@ -1,0 +1,32 @@
+{
+  "name": "hserver-static",
+  "version": "0.0.1",
+  "description": "a hserver static file server middleware",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node test/index"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diaocheng/hserver-static.git"
+  },
+  "keywords": [
+    "hserver",
+    "middleware",
+    "static",
+    "server",
+    "file"
+  ],
+  "author": "程刁",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/diaocheng/hserver-static/issues"
+  },
+  "homepage": "https://github.com/diaocheng/hserver-static#readme",
+  "devDependencies": {
+    "mime-types": "^2.1.13"
+  }
+}
