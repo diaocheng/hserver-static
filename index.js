@@ -8,41 +8,57 @@ const path = require('path');
 const fs = require('fs');
 // 压缩模块
 const zlib = require('zlib');
+// 文件mime类型获取
 const mime = require('mime-types');
+// 默认缓存时间
+const CACHETIME = 7200;
+// 服务器默认支持的gzip ENCODING格式
+const ENCODING = ['deflate', 'gzip'];
+// 要采用Gzip压缩的文件类型
+const ZIPFILE = ['.html', '.css', '.js', '.json', '.xml', '.svg', '.txt'];
 
 exports = module.exports = Hstatic;
 
 function Hstatic(options) {
-    // 防止参数不正确
+    // 防止为传入参数产生错误
     if (typeof options !== 'object') {
         options = {};
     }
-
+    // 获取配置
     let config = {
+        router: options.router || '',
         // 定义默认根目录,并标准化路径
         root: path.normalize(path.resolve(options.root || '.')),
         // 定义默认文件
         index: options.index || 'index.html',
         // 允许访问方式
         method: options.method || ['GET', 'HEAD'],
-        // 字符编码
-        charset: options.charset || 'utf-8',
         // 压缩
         zip: options.zip || false,
         // 缓存时间
         cache: options.cache || 0,
-        // 自定义响应头信息
-        header: options.header || {}
+        // etag支持
+        etag: options.etag || false
     };
+    config.router = config.router.replace(/\/+$/, '');
     /**
      * 中间件主要处理函数
      */
     return function handle(next) {
+        let pathname = decodeURI(this.pathname);
+        // 判断是否为指定的开始路径
+        if (pathname.indexOf(config.router) !== 0) {
+            return next();
+        }
+        const router = new RegExp(`^${config.router}`);
+        // 替换掉前面的指定路径
+        pathname = pathname.replace(router, '');
         // 是否通过指定的方法访问的
         if (config.method.indexOf(this.method) === -1) {
-            return this.status(405);
+            this.status = 405;
+            return next();
         }
-        let pathname = decodeURI(this.request.pathname);
+        // 获取默认index文件
         if (pathname.slice(-1) === '/') {
             pathname = path.join(pathname, 'index.html');
         }
@@ -57,103 +73,222 @@ function Hstatic(options) {
                     let charset = mime.charsets.lookup(type);
                     charset = charset ? `; charset=${charset}` : '';
                     let ContentType = type + charset;
-                    this.set('Content-Type', ContentType);
-                    this.set('Content-Length', stats.size);
+                    // 设置Content-Type
+                    this.type = ContentType.toLowerCase();
 
-                    this.body = gzip.call(this, config.zip, pathname);
-
-                    // // 设置缓存
-                    // let cache = this.getCache(request, stats);
-                    // header = util.merge(header, {
-                    //     'ETag': cache.ETag,
-                    //     'Date': cache.Date,
-                    //     'Expires': cache.Expires,
-                    //     'Cache-Control': cache.CacheControl,
-                    //     'Last-Modified': cache.LastModified
-                    // });
-                    // if (!cache.modified) {
-                    //     this.response(res, 304, header);
-                    // }
-                    // // 请求头是否包含range
-                    // if (request.range) {
-                    //     let range = this.getRange(request.range, stats.size);
-                    //     if (range !== -1 && range !== -2) {
-                    //         header = util.merge(header, {
-                    //             'Accept-Ranges': range.AcceptRanges,
-                    //             'Content-Range': range[0].ContentRange,
-                    //             'Content-Length': range[0].ContentLength
-                    //         });
-                    //         this.stream(res, {
-                    //             file: request.filename,
-                    //             range: range[0]
-                    //         });
-                    //         this.response(res, 206, header);
-                    //     } else {
-                    //         this.response(res, 416, {
-                    //             'Content-Range': request.header['Content-Range']
-                    //         });
-                    //     }
-                    // } else {
-                    //     // 设置gzip压缩
-                    //     let gzip = this.getGzip(request.acceptEncoding);
-                    //     if (gzip !== -1 && gzip !== -2) {
-                    //         header = util.merge(header, {
-                    //             'Content-Encoding': gzip,
-                    //             'Transfer-Encoding': 'chunked',
-                    //             'Content-Length': stats.size
-                    //         });
-                    //     }
-                    //     this.response(res, 200, header);
-                    //     this.stream(res, {
-                    //         file: request.filename,
-                    //         gzip: gzip
-                    //     });
-                    // }
+                    // 判断是否有缓存，并设置缓存
+                    setCache.call(this, config, stats, pathname);
+                    // 判断是否需要发送最新文件到客户端
+                    if (this.cache) {
+                        this.status = 304;
+                    } else {
+                        // 获取正文主体
+                        let body = getBody.call(this, config, stats, pathname);
+                        // 获取压缩后的响应正文
+                        this.body = setZip.call(this, config, body, pathname);
+                    }
                 } else if (stats.isDirectory()) {
-                    this.response(res, 301, {
-                        'Location': url.parse(req.url).pathname + '/'
-                    });
+                    // 301重定向
+                    this.status = 301;
+                    this.set('Location', url.parse(this.req.url).pathname + '/');
                 } else {
-                    this.response(res, 400);
+                    // bad request 错误的请求
+                    this.status = 400;
                 }
             }
             next();
         });
     }
 }
-function gzip(zip, pathname) {
-    const acceptEncoding = this.request.acceptEncoding;
-    if (!Array.isArray(zip) || !Array.isArray(acceptEncoding)) {
+/**
+ * 获取并设置文件缓存头信息
+ * @param  {Object} config   静态服务器中间件配置
+ * @param  {Object} stats    文件信息
+ * @param  {String} pathname 文件路径
+ */
+function setCache(config, stats, pathname) {
+    if (!config.cache) {
         return;
     }
-    let encoding = getEncoding();
-    let _stream = fs.createReadStream(pathname);
+    if (config.cache === true) {
+        config.cache = CACHETIME;
+    }
+    if ('number' !== typeof config.cache) {
+        return;
+    }
+    this.lastModified = stats.mtime.toUTCString();
+    let date = new Date();
+    let expires = new Date();
+    let cacheTime = config.cache * 1000;
+    // 设置缓存过期时间;
+    expires.setTime(expires.getTime() + cacheTime);
+    this.set({
+        'Date': date.toUTCString(),
+        'Expires': expires.toUTCString(),
+        'Cache-Control': `max-age=${cacheTime}`
+    });
+    if (config.etag) {
+        let size = stats.size.toString(16);
+        let mtime = stats.mtime.getTime().toString(16);
+        this.etag = `${size}-${mtime}`;
+    }
+}
+/**
+ * 获取响应正文body
+ * @param  {Object} config   静态服务器中间件配置
+ * @param  {Object} stats    文件信息
+ * @param  {String} pathname 文件路径
+ * @return {Stream}          响应正文
+ */
+function getBody(config, stats, pathname) {
+    let status = this.status || 200;
+    if (status < 200 || status >= 300) {
+        return;
+    }
+    let _stream;
+    // 判断是否range请求
+    if (this.get('Range')) {
+        let range = getRange(this.get('Range'), stats.size);
+        if (range !== -1 && range !== -2) {
+            // 设置响应头
+            this.set({
+                'Accept-Ranges': range.AcceptRanges,
+                'Content-Range': range[0].ContentRange
+            });
+            // 设置正文长度
+            this.length = range[0].ContentLength;
+            this.status = 206;
+            _stream = fs.createReadStream(pathname, {
+                start: range[0].start,
+                end: range[0].end
+            });
+        } else {
+            // 所请求的范围无法满足 (Requested Range not satisfiable)
+            this.status = 416;
+            return;
+        }
+    } else {
+        this.length = stats.size;
+        _stream = fs.createReadStream(pathname);
+    }
+    return _stream;
+    /**
+     * 获取range信息
+     * @param  {String} str  request header range
+     * @param  {Number} size file size
+     * @return {Object}
+     */
+    function getRange(str, size) {
+        var index = str ? str.indexOf('=') : -1
+        if (index === -1) {
+            return -2;
+        }
+        // 把range转换为数组
+        var arr = str.slice(index + 1).split(',');
+        var ranges = [];
+        // 记录range的类型
+        ranges.AcceptRanges = str.slice(0, index);
+        // 获取文件长度
+        for (var i = 0; i < arr.length; i++) {
+            var range = arr[i].split('-');
+            var start = parseInt(range[0], 10);
+            var end = parseInt(range[1], 10);
+            // start为数字时
+            if (isNaN(start)) {
+                start = size - end;
+                end = size - 1;
+                // end为数字时
+            } else if (isNaN(end)) {
+                end = size - 1;
+            }
+            // 结束不得大于文件大小
+            if (end > size - 1) {
+                end = size - 1;
+            }
+            // start与end都为数字,且0<=start<=end
+            if (!isNaN(start) && !isNaN(end) && start >= 0 && start <= end) {
+                ranges.push({
+                    ContentRange: ranges.AcceptRanges + ' ' + start + '-' + end + '/' + size,
+                    ContentLength: end - start + 1,
+                    start: start,
+                    end: end
+                });
+            }
+        }
+        // 没有获取到有效的range值
+        if (ranges.length < 1) {
+            return -1
+        }
+        return ranges;
+    }
+}
+/**
+ * 检查是否压缩响应正文内容
+ * 并压缩响应正文
+ * @param  {Object} config   静态服务器中间件配置
+ * @param  {Stream} _stream  响应正文
+ * @param  {String} pathname 文件路径
+ * @return {Stream}          响应正文
+ */
+function setZip(config, _stream, pathname) {
+    const ext = path.extname(pathname).toLowerCase();
+    if (ZIPFILE.indexOf(ext) === -1) {
+        return _stream;
+    }
+    const acceptEncoding = this.acceptEncoding;
+    // 如果acceptEncoding不为数组，就返回值
+    if (!Array.isArray(acceptEncoding)) {
+        return _stream;
+    }
+    let zip = config.zip;
+    // 获取客户端支持的encoding
+    let encoding = getEncoding(zip, acceptEncoding);
+    // 设置压缩格式，并返回压缩后的响应正文
     switch (encoding) {
         case 'gzip':
-            setChunkHeader.call(this, encoding);
+            this.set({
+                'Content-Encoding': 'gzip',
+                'Transfer-Encoding': 'chunked'
+            });
             return _stream.pipe(zlib.createGzip());
             break;
         case 'deflate':
-            setChunkHeader.call(this, encoding);
+            this.set({
+                'Content-Encoding': 'deflate',
+                'Transfer-Encoding': 'chunked'
+            });
             return _stream.pipe(zlib.createDeflate());
             break;
         default:
             return _stream;
             break;
     }
-    function getEncoding() {
-        for (let i = 0, length = acceptEncoding.length; i < length; i++) {
-            for (let j = 0; j < zip.length; j++) {
-                if (zip[j] === acceptEncoding[i]) {
-                    return acceptEncoding[i].toLocaleLowerCase();
+    /**
+     * 获取客户端和服务器支持的压缩格式
+     * 并选择一种压缩格式
+     * @param  {Mixed} _zip             config zip配置
+     * @param  {Array} _acceptEncoding  客户端支持的压缩格式
+     * @return {String}
+     */
+    function getEncoding(_zip, _acceptEncoding) {
+        if (!_zip) {
+            return false;
+        }
+        if (_zip == true) {
+            _zip = ENCODING;
+        }
+        if ('string' === typeof _zip) {
+            _zip = [_zip];
+        }
+        if (!Array.isArray(_zip)) {
+            return false;
+        }
+        for (let i = 0, length = _acceptEncoding.length; i < length; i++) {
+            for (let j = 0; j < _zip.length; j++) {
+                if (_zip[j] === _acceptEncoding[i]) {
+                    return _acceptEncoding[i].toLocaleLowerCase();
                 }
             }
         }
-    }
-    function setChunkHeader(_encoding) {
-        this.set({
-            'Content-Encoding': _encoding,
-            'Transfer-Encoding': 'chunked'
-        });
     }
 }
