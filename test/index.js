@@ -1,29 +1,47 @@
 'use strict';
 const Hserver = require('hserver');
-const mime = require('mime-types');
 const Hstatic = require('../index');
 
-const port = 8080;
+const port = 8081;
 const app = new Hserver();
 
+// logger
+app.use(function (next) {
+    const start = new Date;
+    this.res.once('finish', () => {
+        const ms = new Date - start;
+        console.log('%s %s %s - time:%s', this.status, this.method, this.url, ms);
+    });
+    next();
+});
+// static middleware
 app.use(Hstatic({
-    // 定义根目录
-    root: 'F:\\Demo\\二维码',
-    // 定义默认文件
+    // 定义访问路径前缀
+    // default ''
+    router: '/',
+    // 定义根文件目录
+    // default '.'
+    root: 'F:\\Web\\LayoutDesigner',
+    // 定义index文件
+    // default 'index.html'
     index: 'index.html',
-    // 允许访问method
-    // method: ['GET', 'POST', 'HEAD', 'DELETE', 'PUT'],
+    // 允许访问method ['GET', 'POST', 'HEAD', 'DELETE', 'PUT']
+    // default ['GET', 'HEAD']
     method: ['GET', 'HEAD'],
-    // 文件字符编码
-    charset: 'utf-8',
-    // 是否启用文件gzip压缩
-    zip: ['deflate', 'gzip', 'sdch', 'br'],
-    // 缓存时间(s)
-    cache: 1000,
-    // 自定义响应头信息
-    header: {
-        'Access-Control-Allow-Origin': '*'
-    }
+    // 是否启用文件gzip压缩 Array|true|false
+    // ['deflate', 'gzip']
+    // 为true时默认为['deflate', 'gzip']
+    // 为false时，关闭gzip压缩
+    // default false
+    zip: true,
+    // 缓存时间 time(s)|true|0
+    // 为true时，默认缓存时间为7200s
+    // 为0时不缓存
+    // default 0
+    cache: 7200,
+    // etag true|false
+    // default false
+    etag: true
 }));
 app.listen(port);
 console.log(`Server is running at http://127.0.0.1:${port}/`);
