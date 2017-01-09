@@ -27,7 +27,7 @@
   },
   "homepage": "https://github.com/diaocheng/hserver-static#readme",
   "devDependencies": {
-    "hserver": "0.0.2"
+    "hserver": "0.0.4"
   },
   "dependencies": {
     "mime-types": "^2.1.13"

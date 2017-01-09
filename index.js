@@ -45,6 +45,10 @@ function Hstatic(options) {
      * 中间件主要处理函数
      */
     return function handle(next) {
+        // 判断是否已响应
+        if (this.headerSent && !this.writable) {
+            return next();
+        }
         let pathname = decodeURI(this.pathname);
         // 判断是否为指定的开始路径
         if (pathname.indexOf(config.router) !== 0) {
@@ -141,10 +145,6 @@ function setCache(config, stats, pathname) {
  * @return {Stream}          响应正文
  */
 function getBody(config, stats, pathname) {
-    let status = this.status || 200;
-    if (status < 200 || status >= 300) {
-        return;
-    }
     let _stream;
     // 判断是否range请求
     if (this.get('Range')) {
