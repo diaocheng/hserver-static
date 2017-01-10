@@ -4,7 +4,7 @@ a hserver static file server middleware
 ## example
     'use strict';
     const Hserver = require('hserver');
-    const Hstatic = require('../index');
+    const Hstatic = require('hserver-static');
 
     const port = 8081;
     const app = new Hserver();
