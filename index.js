@@ -64,7 +64,7 @@ function Hstatic(options) {
         }
         // 获取默认index文件
         if (pathname.slice(-1) === '/') {
-            pathname = path.join(pathname, 'index.html');
+            pathname = path.join(pathname, config.index);
         }
         pathname = path.join(config.root, pathname);
         // 获取文件信息
