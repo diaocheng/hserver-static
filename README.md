@@ -25,7 +25,7 @@ a hserver static file server middleware
         router: '/',
         // 定义根文件目录
         // default '.'
-        root: 'F:\\Web\\LayoutDesigner',
+        root: 'www',
         // 定义index文件
         // default 'index.html'
         index: 'index.html',
