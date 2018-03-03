@@ -1,6 +1,6 @@
 {
   "name": "hserver-static",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "a hserver static file server middleware",
   "main": "index.js",
   "directories": {
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/diaocheng/hserver-static.git"
+    "url": "git+https://github.com/nashaofu/hserver-static.git"
   },
   "keywords": [
     "hserver",
@@ -20,12 +20,12 @@
     "server",
     "file"
   ],
-  "author": "程刁",
+  "author": "nashaofu",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/diaocheng/hserver-static/issues"
+    "url": "https://github.com/nashaofu/hserver-static/issues"
   },
-  "homepage": "https://github.com/diaocheng/hserver-static#readme",
+  "homepage": "https://github.com/nashaofu/hserver-static#readme",
   "devDependencies": {
     "hserver": "0.0.4"
   },
