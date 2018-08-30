@@ -1,6 +1,6 @@
 {
   "name": "hserver-static",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "a hserver static file server middleware",
   "main": "index.js",
   "directories": {
