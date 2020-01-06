@@ -254,6 +254,13 @@ function setZip(context, config, _stream, pathname) {
   let encoding = getEncoding(zip, acceptEncoding)
   // 设置压缩格式，并返回压缩后的响应正文
   switch (encoding) {
+    case 'br':
+      context.set({
+        'Content-Encoding': 'br',
+        'Transfer-Encoding': 'chunked'
+      })
+      return _stream.pipe(zlib.createBrotliCompress())
+      break
     case 'gzip':
       context.set({
         'Content-Encoding': 'gzip',
